@@ -15,6 +15,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Exceptions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ExtractExistingFileAction.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)FileSelector.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)LockFreeQueue.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)OffsetStream.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Shared.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)WinZipAes.cs" />

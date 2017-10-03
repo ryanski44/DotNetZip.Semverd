@@ -28,6 +28,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Ionic.Zip
 {
@@ -147,9 +148,9 @@ namespace Ionic.Zip
         ///   The path can be relative or fully-qualified.
         /// </param>
         ///
-        public void ExtractAll(string path)
+        public void ExtractAll(string path, int numberOfThreads = 1)
         {
-            _InternalExtractAll(path, true);
+            _InternalExtractAll(path, true, numberOfThreads);
         }
 
 
@@ -216,14 +217,14 @@ namespace Ionic.Zip
         /// The action to take if extraction would overwrite an existing file.
         /// </param>
         /// <seealso cref="ExtractSelectedEntries(String,ExtractExistingFileAction)"/>
-        public void ExtractAll(string path, ExtractExistingFileAction extractExistingFile)
+        public void ExtractAll(string path, ExtractExistingFileAction extractExistingFile, int numberOfThreads = 1)
         {
             ExtractExistingFile = extractExistingFile;
-            _InternalExtractAll(path, true);
+            _InternalExtractAll(path, true, numberOfThreads);
         }
 
 
-        private void _InternalExtractAll(string path, bool overrideExtractExistingProperty)
+        private void _InternalExtractAll(string path, bool overrideExtractExistingProperty, int numberOfThreads = 1)
         {
             bool header = Verbose;
             _inExtractAll = true;
@@ -232,35 +233,128 @@ namespace Ionic.Zip
                 OnExtractAllStarted(path);
 
                 int n = 0;
-                foreach (ZipEntry e in _entries.Values)
+                if (numberOfThreads > 1)
                 {
-                    if (header)
+                    LockFreeQueue<ZipEntry> work = new LockFreeQueue<ZipEntry>();
+                    foreach(ZipEntry e in _entries.Values)
                     {
-                        StatusMessageTextWriter.WriteLine("\n{1,-22} {2,-8} {3,4}   {4,-8}  {0}",
-                                  "Name", "Modified", "Size", "Ratio", "Packed");
-                        StatusMessageTextWriter.WriteLine(new System.String('-', 72));
-                        header = false;
+                        work.Enqueue(e);
                     }
-                    if (Verbose)
+                    List<Thread> workers = new List<Thread>();
+                    for (int i = 0; i < numberOfThreads; i++)
                     {
-                        StatusMessageTextWriter.WriteLine("{1,-22} {2,-8} {3,4:F0}%   {4,-8} {0}",
-                                  e.FileName,
-                                  e.LastModified.ToString("yyyy-MM-dd HH:mm:ss"),
-                                  e.UncompressedSize,
-                                  e.CompressionRatio,
-                                  e.CompressedSize);
-                        if (!String.IsNullOrEmpty(e.Comment))
-                            StatusMessageTextWriter.WriteLine("  Comment: {0}", e.Comment);
+                        workers.Add(new Thread(new ThreadStart(delegate
+                        {
+                            using (var viewStream = new FileStream(Name, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                            {
+                                while (true)
+                                {
+                                    ZipEntry e = work.Dequeue();
+                                    if (e != null)
+                                    {
+                                        int entryIndex = Interlocked.Increment(ref n) - 1;
+                                        FileInfo outputFile = new FileInfo(Path.Combine(path, e.FileName));
+                                        if (!outputFile.Directory.Exists)
+                                        {
+                                            outputFile.Directory.Create();
+                                        }
+
+                                        if (header)
+                                        {
+                                            StatusMessageTextWriter.WriteLine("\n{1,-22} {2,-8} {3,4}   {4,-8}  {0}",
+                                                      "Name", "Modified", "Size", "Ratio", "Packed");
+                                            StatusMessageTextWriter.WriteLine(new System.String('-', 72));
+                                            header = false;
+                                        }
+                                        if (Verbose)
+                                        {
+                                            StatusMessageTextWriter.WriteLine("{1,-22} {2,-8} {3,4:F0}%   {4,-8} {0}",
+                                                      e.FileName,
+                                                      e.LastModified.ToString("yyyy-MM-dd HH:mm:ss"),
+                                                      e.UncompressedSize,
+                                                      e.CompressionRatio,
+                                                      e.CompressedSize);
+                                            if (!String.IsNullOrEmpty(e.Comment))
+                                                StatusMessageTextWriter.WriteLine("  Comment: {0}", e.Comment);
+                                        }
+                                        e.Password = _Password;  // this may be null
+                                        OnExtractEntry(entryIndex, true, e, path);
+                                        if (overrideExtractExistingProperty)
+                                        e.ExtractExistingFile = this.ExtractExistingFile;
+                                        
+                                        bool extractFile = true;
+                                        if (outputFile.Exists)
+                                        {
+                                                int rc = e.CheckExtractExistingFile(path, outputFile.FullName);
+                                                if (rc == 2) return; // task canceled. //TODO: this will only cancel one of the threads, should cancel the entire operation
+                                                if (rc == 1) extractFile = false; // do not overwrite
+                                        }   
+                                        if (extractFile)
+                                        {
+                                            using (FileStream fs = new FileStream(outputFile.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                                            {
+                                                fs.SetLength(e.UncompressedSize);
+
+                                                e.Extract(fs, viewStream);
+                                            }
+                                        }
+
+                                        OnExtractEntry(entryIndex + 1, false, e, path);
+                                        if (_extractOperationCanceled)
+                                            return;
+                                    }
+                                    else
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                        })));
                     }
-                    e.Password = _Password;  // this may be null
-                    OnExtractEntry(n, true, e, path);
-                    if (overrideExtractExistingProperty)
-                        e.ExtractExistingFile = this.ExtractExistingFile;
-                    e.Extract(path);
-                    n++;
-                    OnExtractEntry(n, false, e, path);
-                    if (_extractOperationCanceled)
-                        break;
+
+                    foreach(var worker in workers)
+                    {
+                        worker.IsBackground = true;
+                        worker.Start();
+                    }
+
+                    foreach(var worker in workers)
+                    {
+                        worker.Join();
+                    }
+                }
+                else
+                {
+                    foreach (ZipEntry e in _entries.Values)
+                    {
+                        if (header)
+                        {
+                            StatusMessageTextWriter.WriteLine("\n{1,-22} {2,-8} {3,4}   {4,-8}  {0}",
+                                      "Name", "Modified", "Size", "Ratio", "Packed");
+                            StatusMessageTextWriter.WriteLine(new System.String('-', 72));
+                            header = false;
+                        }
+                        if (Verbose)
+                        {
+                            StatusMessageTextWriter.WriteLine("{1,-22} {2,-8} {3,4:F0}%   {4,-8} {0}",
+                                      e.FileName,
+                                      e.LastModified.ToString("yyyy-MM-dd HH:mm:ss"),
+                                      e.UncompressedSize,
+                                      e.CompressionRatio,
+                                      e.CompressedSize);
+                            if (!String.IsNullOrEmpty(e.Comment))
+                                StatusMessageTextWriter.WriteLine("  Comment: {0}", e.Comment);
+                        }
+                        e.Password = _Password;  // this may be null
+                        OnExtractEntry(n, true, e, path);
+                        if (overrideExtractExistingProperty)
+                            e.ExtractExistingFile = this.ExtractExistingFile;
+                        e.Extract(path);
+                        n++;
+                        OnExtractEntry(n, false, e, path);
+                        if (_extractOperationCanceled)
+                            break;
+                    }
                 }
 
                 if (!_extractOperationCanceled)

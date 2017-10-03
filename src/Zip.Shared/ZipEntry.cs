@@ -2581,29 +2581,29 @@ namespace Ionic.Zip
         }
 
 
-        private void SetFdpLoh()
+        private void SetFdpLoh(Stream archiveStream)
         {
             // The value for FileDataPosition has not yet been set.
             // Therefore, seek to the local header, and figure the start of file data.
             // workitem 8098: ok (restore)
-            long origPosition = this.ArchiveStream.Position;
+            long origPosition = archiveStream.Position;
             try
             {
-                this.ArchiveStream.Seek(this._RelativeOffsetOfLocalHeader, SeekOrigin.Begin);
+                archiveStream.Seek(this._RelativeOffsetOfLocalHeader, SeekOrigin.Begin);
 
                 // workitem 10178
-                Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(this.ArchiveStream);
+                Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(archiveStream);
             }
             catch (IOException exc1)
             {
                 var description = String.Format("Exception seeking  entry({0}) offset(0x{1:X8}) len(0x{2:X8})",
                                                    this.FileName, this._RelativeOffsetOfLocalHeader,
-                                                   this.ArchiveStream.Length);
+                                                   archiveStream.Length);
                 throw new BadStateException(description, exc1);
             }
 
             byte[] block = new byte[30];
-            this.ArchiveStream.Read(block, 0, block.Length);
+            archiveStream.Read(block, 0, block.Length);
 
             // At this point we could verify the contents read from the local header
             // with the contents read from the central header.  We could, but don't need to.
@@ -2615,9 +2615,9 @@ namespace Ionic.Zip
             // Console.WriteLine("  pos  0x{0:X8} ({0})", this.ArchiveStream.Position);
             // Console.WriteLine("  seek 0x{0:X8} ({0})", filenameLength + extraFieldLength);
 
-            this.ArchiveStream.Seek(filenameLength + extraFieldLength, SeekOrigin.Current);
+            archiveStream.Seek(filenameLength + extraFieldLength, SeekOrigin.Current);
             // workitem 10178
-            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(this.ArchiveStream);
+            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(archiveStream);
 
             this._LengthOfHeader = 30 + extraFieldLength + filenameLength +
                 GetLengthOfCryptoHeaderBytes(_Encryption_FromZipFile);
@@ -2630,9 +2630,9 @@ namespace Ionic.Zip
 
             // restore file position:
             // workitem 8098: ok (restore)
-            this.ArchiveStream.Seek(origPosition, SeekOrigin.Begin);
+            archiveStream.Seek(origPosition, SeekOrigin.Begin);
             // workitem 10178
-            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(this.ArchiveStream);
+            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(archiveStream);
         }
 
 
@@ -2666,14 +2666,27 @@ namespace Ionic.Zip
         }
 
 
+        internal long GetFileDataPosition(Stream archiveStream)
+        {
+            if (__FileDataPosition == -1)
+                SetFdpLoh(archiveStream);
+
+            return __FileDataPosition;
+        }
+
+        internal int GetLengthOfHeader(Stream archiveStream)
+        {
+            if (_LengthOfHeader == 0)
+                SetFdpLoh(archiveStream);
+
+            return _LengthOfHeader;
+        }
+
         internal long FileDataPosition
         {
             get
             {
-                if (__FileDataPosition == -1)
-                    SetFdpLoh();
-
-                return __FileDataPosition;
+                return GetFileDataPosition(ArchiveStream);
             }
         }
 
@@ -2681,10 +2694,7 @@ namespace Ionic.Zip
         {
             get
             {
-                if (_LengthOfHeader == 0)
-                    SetFdpLoh();
-
-                return _LengthOfHeader;
+                return GetLengthOfHeader(ArchiveStream);
             }
         }
 

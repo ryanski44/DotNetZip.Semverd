@@ -126,6 +126,11 @@ namespace Ionic.Zip
             InternalExtractToStream(stream, null, _container, _Source, FileName);
         }
 
+        public void Extract(Stream stream, Stream archiveStream)
+        {
+            InternalExtractToStream(stream, null, _container, _Source, FileName, archiveStream);
+        }
+
         /// <summary>
         ///   Extract the entry to the filesystem, starting at the specified base
         ///   directory.
@@ -764,7 +769,7 @@ namespace Ionic.Zip
         /// In other words, you can extract to a stream or to a directory (filesystem), but not both!
         /// The Password param is required for encrypted entries.
         /// </summary>
-        void InternalExtractToStream(Stream outStream, string password, ZipContainer zipContainer, ZipEntrySource zipEntrySource, string fileName)
+        void InternalExtractToStream(Stream outStream, string password, ZipContainer zipContainer, ZipEntrySource zipEntrySource, string fileName, Stream overrideArchiveStream = null)
         {
             // workitem 7958
             if (zipContainer == null)
@@ -804,7 +809,7 @@ namespace Ionic.Zip
 
                 WriteStatus("extract entry {0} to stream...", fileName);
 
-                var archiveStream = ArchiveStream;
+                var archiveStream = overrideArchiveStream ?? ArchiveStream;
 
                 if (ExtractToStream(archiveStream, outStream, Encryption, _Crc32))
                     goto ExitTry;
@@ -1007,7 +1012,7 @@ namespace Ionic.Zip
 #endif
         }
 
-        int CheckExtractExistingFile(string baseDir, string targetFileName)
+        internal int CheckExtractExistingFile(string baseDir, string targetFileName)
         {
             int loop = 0;
             // returns: 0 == extract, 1 = don't, 2 = cancel
@@ -1061,7 +1066,7 @@ namespace Ionic.Zip
             var input = archiveStream;
 
             // change for workitem 8098
-            input.Seek(FileDataPosition, SeekOrigin.Begin);
+            input.Seek(GetFileDataPosition(input), SeekOrigin.Begin);
             // workitem 10178
             Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(input);
 
