@@ -62,6 +62,7 @@ using System;
 using System.Reflection;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 
 
 namespace Ionic.Zip
@@ -404,7 +405,7 @@ namespace Ionic.Zip
         /// <remarks>
         ///   It will show up, for example, while viewing properties of the file in
         ///   Windows Explorer.  You can use any arbitrary string, but typically you
-        ///   want something like "Copyright © Dino Chiesa 2011".
+        ///   want something like "Copyright ï¿½ Dino Chiesa 2011".
         /// </remarks>
         ///
         public String Copyright
@@ -479,6 +480,16 @@ namespace Ionic.Zip
         {
             get; set;
         }
+
+        /// <summary>
+        ///   Version of the csc.exe compiler, if not specified then the default version
+        ///   will be used.
+        /// </summary>
+        /// <exclude/>
+        public string CompilerVersion
+        {
+            get; set;
+        }
     }
 
 
@@ -540,7 +551,7 @@ namespace Ionic.Zip
         ///
         /// <para>
         /// The generated exe image will execute on any machine that has the .NET
-        /// Framework 2.0 installed on it.  The generated exe image is also a
+        /// Framework 4.0 installed on it.  The generated exe image is also a
         /// valid ZIP file, readable with DotNetZip or another Zip library or tool
         /// such as WinZip.
         /// </para>
@@ -574,13 +585,12 @@ namespace Ionic.Zip
         /// <c>SaveSelfExtractor()</c>/ The user who runs the SFX will have the
         /// opportunity to change the extract directory before extracting. When
         /// the user runs the Command-Line SFX, the user must explicitly specify
-        /// the directory to which to extract.  The .NET Framework 2.0 is required
+        /// the directory to which to extract.  The .NET Framework 4.0 is required
         /// on the computer when the self-extracting archive is run.
         /// </para>
         ///
         /// <para>
-        /// NB: This method is not available in the version of DotNetZip build for
-        /// the .NET Compact Framework, nor in the "Reduced" DotNetZip library.
+        /// NB: This method is not available in the "Reduced" DotNetZip library.
         /// </para>
         ///
         /// </remarks>
@@ -757,27 +767,18 @@ namespace Ionic.Zip
                 // get the Ionic.Zip assembly
                 Assembly a1 = typeof(ZipFile).Assembly;
 
-                using (var csharp = new Microsoft.CSharp.CSharpCodeProvider
-                       (new Dictionary<string,string>() { { "CompilerVersion", "v2.0" } })) {
+                var providerOptions = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(options.CompilerVersion))
+                {
+                    providerOptions.Add("CompilerVersion", options.CompilerVersion);
+                }
 
-                    // The following is a perfect opportunity for a linq query, but
-                    // I cannot use it.  DotNetZip needs to run on .NET 2.0,
-                    // and using LINQ would break that. Here's what it would look
-                    // like:
-                    //
-                    //   var settings = (from x in SettingsList
-                    //                   where x.Flavor == flavor
-                    //                   select x).First();
-
-                    ExtractorSettings settings = null;
-                    foreach (var x in SettingsList)
-                    {
-                        if (x.Flavor == options.Flavor)
-                        {
-                            settings = x;
-                            break;
-                        }
-                    }
+                using (var csharp = new Microsoft.CSharp.CSharpCodeProvider(providerOptions))
+                {
+                    ExtractorSettings settings =
+                        (from x in SettingsList
+                         where x.Flavor == options.Flavor
+                         select x).FirstOrDefault();
 
                     // sanity check; should never happen
                     if (settings == null)
@@ -908,7 +909,7 @@ namespace Ionic.Zip
                         // workitem
                         string copyright =
                             (String.IsNullOrEmpty(options.Copyright))
-                            ? "Extractor: Copyright © Dino Chiesa 2008-2011"
+                            ? "Extractor: Copyright ï¿½ Dino Chiesa 2008-2011"
                             : options.Copyright.Replace("\"", "");
 
                         if (!String.IsNullOrEmpty(options.ProductName))

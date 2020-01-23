@@ -49,7 +49,7 @@ namespace Ionic.Zip
         private string _currentTempName;
         private uint _currentDiskNumber;
         private uint _maxDiskNumber;
-        private int _maxSegmentSize;
+        private long _maxSegmentSize;
         private System.IO.Stream _innerStream;
 
         // **Note regarding exceptions:
@@ -88,8 +88,12 @@ namespace Ionic.Zip
             return zss;
         }
 
-
         public static ZipSegmentedStream ForWriting(string name, int maxSegmentSize)
+        {
+            return ForWriting(name, (long)maxSegmentSize);
+        }
+
+        public static ZipSegmentedStream ForWriting(string name, long maxSegmentSize)
         {
             ZipSegmentedStream zss = new ZipSegmentedStream()
                 {
@@ -242,11 +246,7 @@ namespace Ionic.Zip
         {
             if (_innerStream != null)
             {
-#if NETCF
-                _innerStream.Close();
-#else
                 _innerStream.Dispose();
-#endif
             }
 
             if (CurrentSegment + 1 == _maxDiskNumber)
@@ -305,11 +305,7 @@ namespace Ionic.Zip
         {
             if (_innerStream != null)
             {
-#if NETCF
-                _innerStream.Close();
-#else
                 _innerStream.Dispose();
-#endif
                 if (File.Exists(CurrentName))
                     File.Delete(CurrentName);
                 File.Move(_currentTempName, CurrentName);
@@ -357,11 +353,22 @@ namespace Ionic.Zip
             {
                 while (_innerStream.Position + count > _maxSegmentSize)
                 {
-                    int c = unchecked(_maxSegmentSize - (int)_innerStream.Position);
-                    _innerStream.Write(buffer, offset, c);
+                    long c = _maxSegmentSize - _innerStream.Position;
+                    int cnt;
+                    if (c > buffer.Length)
+                    {
+                        cnt = buffer.Length;
+                    }
+                    else
+                    {
+                        cnt = (int)c;
+                    }
+
+                    _innerStream.Write(buffer, offset, cnt);
+
                     _SetWriteStream(1);
-                    count -= c;
-                    offset += c;
+                    count -= cnt;
+                    offset += cnt;
                 }
             }
 
@@ -386,8 +393,6 @@ namespace Ionic.Zip
             if (diskNumber == CurrentSegment)
             {
                 var x =_innerStream.Seek(offset, SeekOrigin.Begin);
-                // workitem 10178
-                Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(_innerStream);
                 return x;
             }
 
@@ -396,11 +401,7 @@ namespace Ionic.Zip
             // First, close the current segment, and then remove it.
             if (_innerStream != null)
             {
-#if NETCF
-                _innerStream.Close();
-#else
                 _innerStream.Dispose();
-#endif
                 if (File.Exists(_currentTempName))
                     File.Delete(_currentTempName);
             }
@@ -438,9 +439,6 @@ namespace Ionic.Zip
             _innerStream = new FileStream(_currentTempName, FileMode.Open);
 
             var r =  _innerStream.Seek(offset, SeekOrigin.Begin);
-
-            // workitem 10178
-            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(_innerStream);
 
             return r;
         }
@@ -500,8 +498,6 @@ namespace Ionic.Zip
         public override long Seek(long offset, System.IO.SeekOrigin origin)
         {
             var x = _innerStream.Seek(offset, origin);
-            // workitem 10178
-            Ionic.Zip.SharedUtilities.Workaround_Ladybug318918(_innerStream);
             return x;
         }
 
@@ -528,11 +524,7 @@ namespace Ionic.Zip
             {
                 if (_innerStream != null)
                 {
-#if NETCF
-                    _innerStream.Close();
-#else
                     _innerStream.Dispose();
-#endif
                     //_innerStream = null;
                     if (rwMode == RwMode.Write)
                     {

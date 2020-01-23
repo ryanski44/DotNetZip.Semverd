@@ -78,7 +78,7 @@ namespace Ionic.Zip.Tests
             for (int i = 0; i < 3; i++)
                 SourceDir = Path.GetDirectoryName(SourceDir);
 
-            IonicZipDll = Path.Combine(SourceDir, "Zip\\bin\\Debug\\Ionic.Zip.dll");
+            IonicZipDll = Path.Combine(SourceDir, "Zip\\bin\\Debug\\DotNetZip.dll");
 
             Assert.IsTrue(File.Exists(IonicZipDll), "DLL ({0}) does not exist", IonicZipDll);
 
@@ -2580,6 +2580,30 @@ namespace Ionic.Zip.Tests
             _Extract_ZipFile("Calendar.apk");
         }
 
+
+        [TestMethod]
+        public void Extract_ZipWithRelativePathsOutside()
+        {
+            _Extract_ZipFile("relative-paths-outside.zip");
+            Assert.IsTrue(File.Exists(@"extract\good.txt"));
+            Assert.IsTrue(File.Exists(@"extract\Temp\evil.txt"));
+        }
+
+        [TestMethod]
+        public void Extract_ZipWithRelativePathsInSubdir()
+        {
+            _Extract_ZipFile("relative-paths-in-subdir.zip");
+            Assert.IsTrue(File.Exists(@"extract\good.txt"));
+            Assert.IsTrue(File.Exists(@"extract\Temp\evil.txt"));
+        }
+
+        [TestMethod]
+        public void Extract_ZipWithRelativePathsInSubdirOutside()
+        {
+            _Extract_ZipFile("relative-paths-in-subdir-outside.zip");
+            Assert.IsTrue(File.Exists(@"extract\good.txt"));
+            Assert.IsTrue(File.Exists(@"extract\Temp\evil.txt"));
+        }
 
         private void _Extract_ZipFile(string fileName)
         {
